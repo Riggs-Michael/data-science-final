@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import os
-import time
+import random
 
 from dotenv import load_dotenv
 from ratelimiter import RateLimiter as rl
@@ -19,6 +19,8 @@ matches_endpoint = f'{base_api_url}/matches'
 parsed_matches_endpoint = f'{base_api_url}/parsedMatches'
 live_matches_endpoint = f'{base_api_url}/live'
 api_key = os.getenv('OPEN_DOTA_API_KEY')
+call_limit = int(os.getenv('MAX_CALLS_PER_RUN', 10000))
+parsed_ids_call_limit = int(os.getenv('MAX_PARSED_ID_CALLS_PER_RUN', 2000))
 limiter = rl(max_calls=1200, period=60) if api_key is not None else rl(max_calls=60, period=60)
 global total_calls
 total_calls = 0
@@ -45,11 +47,12 @@ rank_range_parameters = {
 }
 
 
-def fetch_public_matches_by_bracket(bracket: str):
+def fetch_public_matches_by_bracket(bracket: str, less_than_match_id: int):
     request_params = {
         "min_rank": rank_range_parameters[f'{bracket}_min'],
         "max_rank": rank_range_parameters[f'{bracket}_max'],
-        "api_key": api_key
+        "api_key": api_key,
+        "less_than_match_id": less_than_match_id
     }
     with limiter:
         api_call_safety_net()
@@ -59,30 +62,22 @@ def fetch_public_matches_by_bracket(bracket: str):
 
 
 def fetch_all_brackets_sample_matches():
-    match_id = None
-    fetch_count = 0
-    duplicate_count = 0
     parsed_match_ids = pd.read_csv('parsed_match_ids.csv')
+    sampled_parsed_match_ids = random.sample(list(parsed_match_ids['match_id'].values), 10000)
     for bracket in brackets:
         data = {
             "match_id": [],
             "transcript": []
         }
+        sample_index = 0
         try:
-            while len(data['match_id']) < 1000:
-                if fetch_count > 0:
-                    time.sleep(61)
+            while len(data['match_id']) < 1000 and sample_index < len(sampled_parsed_match_ids):
+                before_match_id = sampled_parsed_match_ids[sample_index]
+                sample_index += 1
                 try:
-                    public_matches = fetch_public_matches_by_bracket(bracket)
+                    public_matches = fetch_public_matches_by_bracket(bracket, before_match_id)
                 except JSONDecodeError:
                     print('Skipping empty response.')
-                    continue
-                fetch_count += 1
-                if match_id == public_matches[-1]['match_id']:
-                    print(match_id)
-                    duplicate_count += 1
-                    print(f'{duplicate_count} duplicate public match fetches out of {fetch_count} total')
-                    time.sleep(61)
                     continue
                 for match in public_matches:
                     match_id = match['match_id']
@@ -99,7 +94,7 @@ def fetch_all_brackets_sample_matches():
                         continue
                     parsed_transcript = ''
                     for entry in transcript:
-                        if entry['type'] == 'chat':
+                        if entry['type'] == 'chat' and "player_slot" in entry.keys() and "key" in entry.keys():
                             player_slot = f'player_slot {entry["player_slot"]}: '
                             message = f'{entry["key"]}\n'
                             parsed_transcript = ''.join([parsed_transcript, player_slot, message])
@@ -107,7 +102,7 @@ def fetch_all_brackets_sample_matches():
                     data['transcript'].append(parsed_transcript)
         finally:
             df = pd.DataFrame(data)
-            df.to_excel(f'{bracket}_match_transcripts.xlsx')
+            df.to_csv(f'{bracket}_match_transcripts.csv')
 
 
 def fetch_match_details(match_id: int):
@@ -130,7 +125,7 @@ def fetch_parsed_match_ids(start_before: int):
     data = {
         "match_id": []
     }
-    while start_before is not None and iterations < 246000:
+    while start_before is not None and iterations < parsed_ids_call_limit:
         iterations += 1
         request_params = {
             'less_than_match_id': start_before,
@@ -159,18 +154,18 @@ def api_call_safety_net():
         return
     global total_calls
     total_calls += 1
-    if total_calls >= 50000:
+    if total_calls >= call_limit:
         raise ExpenseException('These calls cost money you know!')
 
 
 if __name__ == '__main__':
-    # if os.path.isfile('parsed_match_ids.xlsx'):
-    #     spmi = pd.read_excel('parsed_match_ids.xlsx')
-    #     starting_match_id = spmi.iloc[-1][0]
-    # else:
-    #     spmi = pd.DataFrame({"match_id": []})
-    #     starting_match_id = None
-    # fpmi = fetch_parsed_match_ids(starting_match_id)
-    # pmi = pd.concat([spmi, fpmi])
-    # pmi.to_csv('parsed_match_ids.csv', index=False)
+    if os.path.isfile('parsed_match_ids.csv'):
+        spmi = pd.read_excel('parsed_match_ids.csv')
+        starting_match_id = spmi.iloc[-1][0]
+    else:
+        spmi = pd.DataFrame({"match_id": []})
+        starting_match_id = None
+    fpmi = fetch_parsed_match_ids(starting_match_id)
+    pmi = pd.concat([spmi, fpmi])
+    pmi.to_csv('parsed_match_ids.csv', index=False)
     fetch_all_brackets_sample_matches()
