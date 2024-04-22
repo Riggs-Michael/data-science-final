@@ -32,14 +32,14 @@ a csv of match ids that correspond to matches OpenDota has already parsed. Extra
 the project directory is advised if you would like to fetch different matches for analysis, as reconstructing
 this will take a significant number of calls to the OpenDota api.
 
-Additionally, there are several csvs titled as <skill bracket name>_match_transcripts.csv which contain the raw
+Additionally, there are several csvs titled as "skill bracket name"\_match_transcripts.csv which contain the raw
 match chat logs fetched from OpenDota. These have been fed to OpenAI's gpt-4-turbo model for labeling, and the
-results saved in csvs titled as labeled_<skill bracket name>_match_transcripts.csv
+results saved in csvs titled as labeled_"skill bracket name"_match_transcripts.csv
 
 ## Analysis outputs
 
 Lastly, the outputs of the DataProcessor script have been uploaded as well. They include pngs titled as
-<skill bracket name>_toxicity_distribution.png and give a graphical representation of the distribution
+"skill bracket name"_toxicity_distribution.png and give a graphical representation of the distribution
 of toxicity levels in the corresponding skill bracket, as labeled by OpenAI's gpt-4-turbo model. There is also
 a boxplot titled toxicity_boxplot.png which contains a boxplot of each bracket together for visual comparison.
 Finally, there is a csv titled toxicity_stats.csv which includes the mean, standard deviation, and median
