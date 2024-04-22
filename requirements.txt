@@ -3,3 +3,4 @@ pandas
 ratelimiter
 python-dotenv
 openpyxl
+openai
